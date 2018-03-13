@@ -30,6 +30,7 @@ type FirehoseHook struct {
 	levels              []logrus.Level
 	ignoreFields        map[string]struct{}
 	filters             map[string]func(interface{}) interface{}
+	fieldMap            map[string]string
 	addNewline          bool
 }
 
@@ -75,6 +76,10 @@ func (h *FirehoseHook) Levels() []logrus.Level {
 // SetLevels sets logging level to fire this hook.
 func (h *FirehoseHook) SetLevels(levels []logrus.Level) {
 	h.levels = levels
+}
+
+func (h *FirehoseHook) SetFieldMap(fieldMap map[string]string) {
+	h.fieldMap = fieldMap
 }
 
 // Async sets async flag and send log asynchroniously.
@@ -130,8 +135,14 @@ func (h *FirehoseHook) getStreamName(entry *logrus.Entry) string {
 
 func (h *FirehoseHook) getData(entry *logrus.Entry) []byte {
 	data := make(logrus.Fields)
-	entry.Data["message"] = entry.Message
+
 	for k, v := range entry.Data {
+		if h.fieldMap != nil {
+			if rekey, ok := h.fieldMap[k]; ok {
+				k = rekey
+			}
+		}
+
 		if _, ok := h.ignoreFields[k]; ok {
 			continue
 		}
@@ -140,7 +151,28 @@ func (h *FirehoseHook) getData(entry *logrus.Entry) []byte {
 		} else {
 			v = formatData(v) // use default formatter
 		}
+
 		data[k] = v
+	}
+
+	if h.fieldMap != nil {
+		if msgkey, ok := h.fieldMap["message"]; ok {
+			data[msgkey] = entry.Message
+		} else {
+			data["message"] = entry.Message
+		}
+
+		if timekey, ok := h.fieldMap["time"]; ok {
+			data[timekey] = entry.Time
+		} else {
+			data["time"] = entry.Time
+		}
+
+		if lvlkey, ok := h.fieldMap["level"]; ok {
+			data[lvlkey] = entry.Level
+		} else {
+			data["level"] = entry.Level
+		}
 	}
 
 	bytes, err := json.Marshal(data)
